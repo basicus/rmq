@@ -266,23 +266,31 @@ func (queue *redisQueue) AddConsumer(tag string, consumer Consumer) (name string
 	if err != nil {
 		return "", err
 	}
-	go queue.consumerConsume(consumer)
+	go queue.consumerConsume(consumer, name)
 	return name, nil
 }
 
-func (queue *redisQueue) consumerConsume(consumer Consumer) {
+func (queue *redisQueue) consumerConsume(consumer Consumer, name string) {
 	defer func() {
 		queue.stopWg.Done()
 	}()
 	for {
 		select {
 		case <-queue.consumingStopped: // prefer this case
+			_, err := queue.redisClient.SRem(queue.consumersKey, name)
+			if err != nil {
+				return
+			}
 			return
 		default:
 		}
 
 		select {
 		case <-queue.consumingStopped:
+			_, err := queue.redisClient.SRem(queue.consumersKey, name)
+			if err != nil {
+				return
+			}
 			return
 
 		case delivery, ok := <-queue.deliveryChan:
@@ -310,11 +318,11 @@ func (queue *redisQueue) AddBatchConsumer(tag string, batchSize int64, timeout t
 	if err != nil {
 		return "", err
 	}
-	go queue.consumerBatchConsume(batchSize, timeout, consumer)
+	go queue.consumerBatchConsume(batchSize, timeout, consumer, name)
 	return name, nil
 }
 
-func (queue *redisQueue) consumerBatchConsume(batchSize int64, timeout time.Duration, consumer BatchConsumer) {
+func (queue *redisQueue) consumerBatchConsume(batchSize int64, timeout time.Duration, consumer BatchConsumer, name string) {
 	defer func() {
 		queue.stopWg.Done()
 	}()
@@ -322,12 +330,20 @@ func (queue *redisQueue) consumerBatchConsume(batchSize int64, timeout time.Dura
 	for {
 		select {
 		case <-queue.consumingStopped: // prefer this case
+			_, err := queue.redisClient.SRem(queue.consumersKey, name)
+			if err != nil {
+				return
+			}
 			return
 		default:
 		}
 
 		select {
 		case <-queue.consumingStopped:
+			_, err := queue.redisClient.SRem(queue.consumersKey, name)
+			if err != nil {
+				return
+			}
 			return
 
 		case delivery, ok := <-queue.deliveryChan: // Wait for first delivery
